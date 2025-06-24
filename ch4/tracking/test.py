@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from sam2.build_sam import build_sam2_video_predictor
 from ultralytics import YOLO
+import gc
 
 
 def get_bbox_prompt(frames_dir, dectection_ckpt):
@@ -60,4 +61,38 @@ if __name__ == "__main__":
             for object_id, mask in zip(object_ids, masks):
                 mask = mask[0].cpu().numpy()
                 mask = mask > 0.0
-                non_zero
+                non_zero_indice = np.agrwhere(mask)
+                
+                if len(non_zero_indice) == 0:
+                    bbox = [0, 0, 0, 0]
+                else:
+                    y_min, x_min = non_zero_indice.min(axis=0).tolist()
+                    y_max, x_max = non_zero_indice.max(axis=0).tolist()
+                    bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+                    
+                bbox_visualize[object_id] = bbox
+                mask_visualize[object_id] = mask
+                
+            # Visualize
+            frame_img = loaded_frames(frame_idx)
+            color = [(255, 0, 0)]
+            
+            for object_id, mask in mask_visualize.items():
+                mask_image = np.zeros((height, width, 3), np.uint8)
+                mask_image[mask] = color[(object_id + 1) % len(color)]
+                
+                frame_img = cv2.addWeighted(frame_img, 1, mask_image, 0.3, 0)
+                
+            for object_id, bbox in bbox_visualize.items():
+                cv2.retangle(frame_img, (bbox[0], bbox[1]), (bbox[0] + bbox[2], bbox[1] + bbox[3]), color[object_id % len(color)], 2)
+                
+            output_video.write(frame_img)
+            
+        output_video.release()
+        
+    del samurai_predictor, initial_state
+    gc.collect()
+    torch.clear_autocast_cache()
+    torch.cuda.empty_cache()
+    
+                
